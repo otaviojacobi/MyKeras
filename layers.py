@@ -22,6 +22,8 @@ class Dense(Layer):
                 self.activate = activations.linear
             elif activation == 'sigmoid':
                 self.activate = activations.sigmoid
+            elif activation == 'softmax':
+                self.activate = activations.softmax
         else:
             raise Exception('Invalid input shape parameter')
 

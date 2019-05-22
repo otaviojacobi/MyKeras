@@ -2,10 +2,9 @@ from layers import Sequential, Dense
 import numpy as np
 
 model = Sequential()
-model.add(Dense(3, input_shape=(3,)))
-model.add(Dense(4))
-model.add(Dense(2))
+model.add(Dense(32, input_shape=(784,)))
+model.add(Dense(10, activation='softmax'))
 
-model.fit([np.array([1,1,1])], [1])
+model.fit([np.zeros(784)], [1])
 
 print(model)
