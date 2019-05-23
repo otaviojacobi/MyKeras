@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import activations
 import numpy as np
+#from copy import deepcopy
 
 class Layer(ABC):
     
@@ -77,24 +78,47 @@ class Model:
         pass
 
     def fit(self, x_training, y_training):
+        if not self.__are_x_y_valid(x_training, y_training):
+            raise Exception('Invalid vectors for training')
 
         weights_matrix = self.__init_weights_matrix()
 
-        # forward propagate
-        # TODO: VECTORIZE !!!!!!!
-        for x_no_bias in x_training:
-            current_values = x_no_bias
+        # TODO: VECTORIZE & batching !!!
+        for training_row in range(x_training.shape[0]):
+            
+            # TODO: carefull, maybe needs deepcopying
+            # FIXME: save activation values during each iteration !!
+            activation_value = x_training[training_row]
+            
+            # forward propagate
             for layer_idx in range(len(self.layers)):
-                current_values = self.__add_bias_and_vstack(current_values)
-                current_values = self.layers[layer_idx].activate(np.matmul(weights_matrix[layer_idx], current_values))
+                activation_value = self.__add_bias_and_vstack(activation_value)
+                activation_value = self.layers[layer_idx].activate(np.matmul(weights_matrix[layer_idx], activation_value))
 
-        print(weights_matrix)
+            # back propagat
+            training_error = self.__cost_function(np.hstack(activation_value), y_training[training_row])
         print(current_values)
+
+    def __are_x_y_valid(self, X, y):
+        same_amt_rows = X.shape[0] == y.shape[0]
+        return same_amt_rows and len(X.shape) == 2 and len(y.shape) == 2
 
     def __add_bias_and_vstack(self, array):
         values = np.hstack(array)
         values = np.insert(values, 0, 1)
         return np.vstack(values)
+
+    def __init_weights_matrix(self):
+        weights_matrix = []
+        for layer_idx in range(len(self.layers)):
+            if layer_idx == 0:
+                weight_mat = np.random.random((self.layers[layer_idx].units, self.layers[layer_idx].input_shape[layer_idx] + 1))
+            else:
+                weight_mat = np.random.random((self.layers[layer_idx].units, self.layers[layer_idx-1].units + 1))
+            
+            weights_matrix.append(weight_mat)
+        
+        return weights_matrix
 
     def __is_layer_valid(self, layer):
         return isinstance(layer, Dense)
@@ -125,14 +149,3 @@ class Model:
 
         return table
 
-    def __init_weights_matrix(self):
-        weights_matrix = []
-        for layer_idx in range(len(self.layers)):
-            if layer_idx == 0:
-                weight_mat = np.random.random((self.layers[layer_idx].units, self.layers[layer_idx].input_shape[layer_idx] + 1))
-            else:
-                weight_mat = np.random.random((self.layers[layer_idx].units, self.layers[layer_idx-1].units + 1))
-            
-            weights_matrix.append(weight_mat)
-        
-        return weights_matrix
