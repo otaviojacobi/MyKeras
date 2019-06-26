@@ -77,36 +77,62 @@ class Model:
     def compile(self):
         pass
 
-    def fit(self, x_training, y_training):
+    def fit(self, x_training, y_training, reg_factor=0.25):
         if not self.__are_x_y_valid(x_training, y_training):
             raise Exception('Invalid vectors for training')
 
-        weights_matrix = self.__init_weights_matrix()
+        self.weights_matrix = self.__init_weights_matrix()
 
-        # TODO: VECTORIZE & batching !!!
-        for training_row in range(x_training.shape[0]):
-            
-            # TODO: carefull, maybe needs deepcopying
-            # FIXME: save activation values during each iteration !!
-            activation_value = x_training[training_row]
-            
-            # forward propagate
-            for layer_idx in range(len(self.layers)):
-                activation_value = self.__add_bias_and_vstack(activation_value)
-                activation_value = self.layers[layer_idx].activate(np.matmul(weights_matrix[layer_idx], activation_value))
+        J, vals = self.__cost_and_grad(x_training, y_training, reg_factor)
 
-            # back propagat
-            training_error = self.__cost_function(np.hstack(activation_value), y_training[training_row])
-        print(current_values)
+        print(J)
+        print(vals)
+
+    def __cost_and_grad(self, x_training, y_training, reg_factor):
+        self.m = x_training.shape[0]
+        activation_value = self.__add_bias(x_training)
+
+        activation_values = [activation_value]
+        regularization = 0
+        Z = []
+        ## Foward prop
+        for layer_idx in range(len(self.layers)-1):
+            z = np.matmul(activation_value, self.weights_matrix[layer_idx].T)
+            Z.append(z)
+            activation_value = self.__add_bias(self.layers[layer_idx].activate(z))
+            activation_values.append(activation_value)
+            regularization += np.sum(np.power(self.weights_matrix[layer_idx][:, 1:], 2))
+
+        
+        H = self.layers[-1].activate(np.matmul(activation_values[-1], self.weights_matrix[-1].T))
+        J = np.sum(np.multiply(-y_training, np.log(H)) - np.multiply((1-y_training), np.log(1-H)))/self.m
+        J += (reg_factor/(2*self.m)) * regularization
+
+        ## Back prop
+        last_sigma = H - y_training
+        sigmas = [last_sigma]
+        for layer_idx in range(len(self.layers)-1):
+            sigma = np.multiply(np.matmul(sigmas[-1], self.weights_matrix[-layer_idx-1]), self.__add_bias(Z[layer_idx]))[:, 1:]
+            sigmas.append(sigma)
+        sigmas.reverse()
+
+        grads = []
+        for idx in range(len(sigmas)):
+            delta = (np.matmul(sigmas[idx].T, activation_values[idx]))/self.m
+            grad = delta + ((reg_factor / self.m) * np.insert(self.weights_matrix[idx][:, 1:], 0, values=np.zeros(len(self.weights_matrix[idx])), axis=1))
+            grads.append(np.ravel(grad))
+
+        return J, np.concatenate(tuple(grads))
+
+    def __cost_function(self, last_activation_values, y):
+        return np.multiply(y, last_activation_values) + (np.multiply((1-y), np.log(1-last_activation_values)))
 
     def __are_x_y_valid(self, X, y):
         same_amt_rows = X.shape[0] == y.shape[0]
         return same_amt_rows and len(X.shape) == 2 and len(y.shape) == 2
 
-    def __add_bias_and_vstack(self, array):
-        values = np.hstack(array)
-        values = np.insert(values, 0, 1)
-        return np.vstack(values)
+    def __add_bias(self, arr):
+        return np.insert(arr, 0, values=np.ones(self.m), axis=1)
 
     def __init_weights_matrix(self):
         weights_matrix = []
