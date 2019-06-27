@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import activations
 import numpy as np
+from activations import sigmoid
 #from copy import deepcopy
 
 class Layer(ABC):
@@ -54,8 +55,14 @@ class Sequential:
         self.model.compile()
         return self
 
-    def fit(self, x_training, y_training):
-        self.model.fit(x_training, y_training)
+    def set_initial_weights(self, weights):
+        return self.model.set_initial_weights(weights)
+
+    def predict(self, x_predict):
+        return self.model.predict(x_predict)
+
+    def fit(self, x_training, y_training, reg_factor=0.25, learning_rate=0.0001, epochs=1000):
+        self.model.fit(x_training, y_training, reg_factor, learning_rate, epochs)
         return self
 
 class Model:
@@ -64,6 +71,7 @@ class Model:
         if not self.__are_layers_valid(layers):
             raise Exception('Use only proper layers in model creation')
         self.layers = layers
+        self.__weights_inited = False
 
     def __str__(self):
         return self.__layers_as_str()
@@ -77,16 +85,42 @@ class Model:
     def compile(self):
         pass
 
-    def fit(self, x_training, y_training, reg_factor=0.25):
+    def fit(self, x_training, y_training, reg_factor, learning_rate, epochs):
         if not self.__are_x_y_valid(x_training, y_training):
             raise Exception('Invalid vectors for training')
 
         self.weights_matrix = self.__init_weights_matrix()
 
-        J, vals = self.__cost_and_grad(x_training, y_training, reg_factor)
+        for epoch in range(epochs):
+            J, grads = self.__cost_and_grad(x_training, y_training, reg_factor)
+            for idx in range(len(self.weights_matrix)):
+                self.weights_matrix[idx] = self.weights_matrix[idx] - learning_rate * grads[idx]
 
-        print(J)
-        print(vals)
+            print(J)
+            print(grads)
+        #print(vals)
+
+    def predict(self, x_predict):
+        activation_value = self.__add_bias(x_predict)
+        activation_values = [activation_value]
+        for layer_idx in range(len(self.layers)-1):
+            z = np.matmul(activation_value, self.weights_matrix[layer_idx].T)
+            activation_value = self.__add_bias(self.layers[layer_idx].activate(z))
+            activation_values.append(activation_value)
+
+        return self.layers[-1].activate(np.matmul(activation_values[-1], self.weights_matrix[-1].T))
+
+    def set_initial_weights(self, weights):
+        sample_matrix = self.__init_weights_matrix()
+        if len(sample_matrix) != len(weights):
+            raise Exception('Inited weights are not in correct format')
+
+        for idx in range(len(sample_matrix)):
+            if sample_matrix[idx].shape != weights[idx].shape:
+                raise Exception('Inited weights are not in correct format')
+
+        self.__weights_inited = True
+        self.weights_matrix = weights
 
     def __cost_and_grad(self, x_training, y_training, reg_factor):
         self.m = x_training.shape[0]
@@ -112,7 +146,9 @@ class Model:
         last_sigma = H - y_training
         sigmas = [last_sigma]
         for layer_idx in range(len(self.layers)-1):
-            sigma = np.multiply(np.matmul(sigmas[-1], self.weights_matrix[-layer_idx-1]), self.__add_bias(Z[layer_idx]))[:, 1:]
+            old_sigma_and_weights = np.matmul(sigmas[-1], self.weights_matrix[-layer_idx-1])
+            sigmoid_derivative = sigmoid(self.__add_bias(Z[layer_idx]), derivative=True)
+            sigma = np.multiply(old_sigma_and_weights, sigmoid_derivative)[:, 1:]
             sigmas.append(sigma)
         sigmas.reverse()
 
@@ -120,9 +156,10 @@ class Model:
         for idx in range(len(sigmas)):
             delta = (np.matmul(sigmas[idx].T, activation_values[idx]))/self.m
             grad = delta + ((reg_factor / self.m) * np.insert(self.weights_matrix[idx][:, 1:], 0, values=np.zeros(len(self.weights_matrix[idx])), axis=1))
-            grads.append(np.ravel(grad))
+            grads.append(grad)
 
-        return J, np.concatenate(tuple(grads))
+        #return J, np.concatenate(tuple(grads))
+        return J, grads
 
     def __cost_function(self, last_activation_values, y):
         return np.multiply(y, last_activation_values) + (np.multiply((1-y), np.log(1-last_activation_values)))
@@ -135,6 +172,10 @@ class Model:
         return np.insert(arr, 0, values=np.ones(self.m), axis=1)
 
     def __init_weights_matrix(self):
+
+        if self.__weights_inited:
+            return self.weights_matrix
+
         weights_matrix = []
         for layer_idx in range(len(self.layers)):
             if layer_idx == 0:
