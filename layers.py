@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import activations
 import numpy as np
 from activations import sigmoid
+from utils import unison_shuffled_copies
+import matplotlib.pyplot as plt
 #from copy import deepcopy
 
 class Layer(ABC):
@@ -61,9 +63,18 @@ class Sequential:
     def predict(self, x_predict):
         return self.model.predict(x_predict)
 
-    def fit(self, x_training, y_training, reg_factor=0.25, learning_rate=0.0001, epochs=1000):
-        self.model.fit(x_training, y_training, reg_factor, learning_rate, epochs)
+    def fit(self, x_training, y_training, reg_factor=0.25, learning_rate=0.0001, epochs=1000, batch_size=1, shuffle=False, validation_data=None, verbose=True):
+        self.model.fit(x_training, y_training, reg_factor, learning_rate, epochs, batch_size, shuffle, validation_data, verbose)
         return self
+
+    def plot_train_error(self):
+        return self.model.plot_train_error()
+
+    def plot_validation_error(self):
+        return self.model.plot_validation_error()
+
+    def plot_error(self):
+        return self.model.plot_error()
 
 class Model:
 
@@ -85,29 +96,62 @@ class Model:
     def compile(self):
         pass
 
-    def fit(self, x_training, y_training, reg_factor, learning_rate, epochs):
+    def fit(self, x_training, y_training, reg_factor, learning_rate, epochs, batch_size, shuffle, validation_data, verbose):
         if not self.__are_x_y_valid(x_training, y_training):
             raise Exception('Invalid vectors for training')
+        if len(x_training)//batch_size < 1:
+            raise Exception('Batch size too large')
+
+        self.has_validation_data = False
+        if validation_data != None and len(validation_data) != 2 and self.__are_x_y_valid(validation_data[0], validation_data[1]):
+            raise Exception('Validation data not valid')
+        else:
+            self.has_validation_data = True
+
+        if shuffle:
+            x_training, y_training = unison_shuffled_copies(x_training, y_training)
 
         self.weights_matrix = self.__init_weights_matrix()
+        self.errors = np.zeros(epochs)
+        self.validation_error = np.zeros(epochs)
 
         for epoch in range(epochs):
-            J, grads = self.__cost_and_grad(x_training, y_training, reg_factor)
-            for idx in range(len(self.weights_matrix)):
-                self.weights_matrix[idx] = self.weights_matrix[idx] - learning_rate * grads[idx]
+            total_J = 0
+            for batch in range(len(x_training)//batch_size):
+                J, grads = self.__cost_and_grad(x_training[batch*batch_size:(batch+1)*batch_size], y_training[batch*batch_size:(batch+1)*batch_size], reg_factor)
+                for idx in range(len(self.weights_matrix)):
+                    self.weights_matrix[idx] = self.weights_matrix[idx] - learning_rate * grads[idx]
+            total_J += J
+            self.errors[epoch] = J
+            if verbose:
+                if epoch in [0,1,2,3,4,5, epochs-2, epochs-1, epochs] or epoch % 100 == 0:
+                    y_predicted_train = np.array([np.argmax(k) for k in self.predict(x_training)])
+                    y_predicted_validation = np.array([np.argmax(k) for k in self.predict(validation_data[0])])
+                    y_training_maxed = np.array([np.argmax(k) for k in y_training])
+                    y_validation_maxed = np.array([np.argmax(k) for k in validation_data[1]])
+                    scored_train = int(100*( np.count_nonzero(y_predicted_train == y_training_maxed) )/float(len(y_training_maxed)))
+                    scored_test = int(100*( np.count_nonzero(y_predicted_validation == y_validation_maxed) )/float(len(y_predicted_validation)))
 
-            print(J)
-            print(grads)
-        #print(vals)
+                    print("Correct guesses in training set %d%% (epoch %d/%d)"%(scored_train , epoch, epochs ))
+                    print("Correct guesses in test set %d%% (epoch %d/%d)"%(scored_test, epoch, epochs ))
+
+            if self.has_validation_data:
+                J_validation, _ = self.__cost_and_grad(validation_data[0], validation_data[1], reg_factor)
+                self.validation_error[epoch] = J_validation
+
+        self.is_trained = True
+
 
     def predict(self, x_predict):
-        activation_value = self.__add_bias(x_predict)
+        size = x_predict.shape[0]
+        activation_value = self.__add_bias(x_predict, size)
         activation_values = [activation_value]
         for layer_idx in range(len(self.layers)-1):
             z = np.matmul(activation_value, self.weights_matrix[layer_idx].T)
-            activation_value = self.__add_bias(self.layers[layer_idx].activate(z))
+            activation_value = self.__add_bias(self.layers[layer_idx].activate(z), size)
             activation_values.append(activation_value)
 
+        #print(activation_values[-1])
         return self.layers[-1].activate(np.matmul(activation_values[-1], self.weights_matrix[-1].T))
 
     def set_initial_weights(self, weights):
@@ -122,9 +166,31 @@ class Model:
         self.__weights_inited = True
         self.weights_matrix = weights
 
+    def plot_train_error(self):
+
+        if not self.is_trained:
+            raise Exception('First train your model (fit) before plotting')
+        plt.plot(self.errors)
+        plt.show()
+
+    def plot_validation_error(self):
+        if not self.is_trained:
+            raise Exception('First train your model (fit) before plotting')
+        plt.plot(self.validation_error)
+        plt.show()
+
+    def plot_error(self):
+        if not self.is_trained:
+            raise Exception('First train your model (fit) before plotting')
+        plt.plot(self.errors)
+        plt.plot(self.validation_error)
+        plt.legend(['train error', 'test error'])
+        plt.show()
+
+
     def __cost_and_grad(self, x_training, y_training, reg_factor):
         self.m = x_training.shape[0]
-        activation_value = self.__add_bias(x_training)
+        activation_value = self.__add_bias(x_training, self.m)
 
         activation_values = [activation_value]
         regularization = 0
@@ -133,7 +199,7 @@ class Model:
         for layer_idx in range(len(self.layers)-1):
             z = np.matmul(activation_value, self.weights_matrix[layer_idx].T)
             Z.append(z)
-            activation_value = self.__add_bias(self.layers[layer_idx].activate(z))
+            activation_value = self.__add_bias(self.layers[layer_idx].activate(z), self.m)
             activation_values.append(activation_value)
             regularization += np.sum(np.power(self.weights_matrix[layer_idx][:, 1:], 2))
 
@@ -147,7 +213,7 @@ class Model:
         sigmas = [last_sigma]
         for layer_idx in range(len(self.layers)-1):
             old_sigma_and_weights = np.matmul(sigmas[-1], self.weights_matrix[-layer_idx-1])
-            sigmoid_derivative = sigmoid(self.__add_bias(Z[layer_idx]), derivative=True)
+            sigmoid_derivative = sigmoid(self.__add_bias(Z[-layer_idx-1], self.m), derivative=True)
             sigma = np.multiply(old_sigma_and_weights, sigmoid_derivative)[:, 1:]
             sigmas.append(sigma)
         sigmas.reverse()
@@ -158,7 +224,7 @@ class Model:
             grad = delta + ((reg_factor / self.m) * np.insert(self.weights_matrix[idx][:, 1:], 0, values=np.zeros(len(self.weights_matrix[idx])), axis=1))
             grads.append(grad)
 
-        #return J, np.concatenate(tuple(grads))
+        #TODO: roll/unroll thetas into single vector...(and with that, add advanced minimize functions like Adam)
         return J, grads
 
     def __cost_function(self, last_activation_values, y):
@@ -168,8 +234,8 @@ class Model:
         same_amt_rows = X.shape[0] == y.shape[0]
         return same_amt_rows and len(X.shape) == 2 and len(y.shape) == 2
 
-    def __add_bias(self, arr):
-        return np.insert(arr, 0, values=np.ones(self.m), axis=1)
+    def __add_bias(self, arr, size):
+        return np.insert(arr, 0, values=np.ones(size), axis=1)
 
     def __init_weights_matrix(self):
 
@@ -215,4 +281,3 @@ class Model:
                 table += '_________________________________________________________________\n'
 
         return table
-

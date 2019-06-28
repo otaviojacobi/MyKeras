@@ -1,24 +1,22 @@
 from layers import Sequential, Dense
 import numpy as np
-from utils import load_mnist_60k
+from utils import load_wine
 
-
-X = np.array([[0.13], [0.42]])
-y = np.array([[0.9], [0.23]])
-
+(X_train, y_train), (X_test, y_test)  = load_wine(0.8, normalize=True, shuffled=True)
 
 model = Sequential()
-model.add(Dense(2, input_shape=(1,)))
-model.add(Dense(1))
+model.add(Dense(10, input_shape=(X_train.shape[1],)))
+model.add(Dense(y_train.shape[1]))
 
-model.set_initial_weights([
-   np.array([[0.4, 0.1], [0.3, 0.2]]),
-   np.array([[0.7, 0.5, 0.6]])
-])
+model.fit(X_train, y_train, 
+         reg_factor=0.0, 
+         epochs=1000, 
+         learning_rate=0.1,
+         batch_size=32,
+         validation_data=(X_test, y_test)
+)
 
+model.plot_error()
 
-model.fit(np.array(X), np.array(y), reg_factor=0, epochs=1)
-#y_pred = model.predict(X)
+# model.plot_train_error()
 
-#for idx in range(len(y)):
-#    print(np.argmax(y_pred[idx]), np.argmax(y[idx]))
