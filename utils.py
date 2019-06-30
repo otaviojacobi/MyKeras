@@ -10,7 +10,7 @@ def unison_shuffled_copies(a, b):
     p = np.random.permutation(len(a))
     return a[p], b[p]
 
-def load_mnist_60k(train_percentage, normalize=False, shuffled=False):
+def load_mnist_60k(train_percentage, normalize=False, shuffled=False, amt=60000):
     X = []
     Y = []
     f = open('./mnist_train.csv', 'r')
@@ -19,7 +19,7 @@ def load_mnist_60k(train_percentage, normalize=False, shuffled=False):
     while True:
         line = f.readline()
         counter += 1
-        if line == '':
+        if line == '' or counter >= amt:
             break
 
         x = list(map(int, line.split(',')))
@@ -35,7 +35,7 @@ def load_mnist_60k(train_percentage, normalize=False, shuffled=False):
         X, y = unison_shuffled_copies(X,y)
 
     if normalize:
-        X = X / X.max(axis=0)
+        X = X / 255.
 
     idx = int(len(X) * train_percentage)
     return (X[:idx], y[:idx]), (X[idx:], y[idx:])
@@ -92,6 +92,34 @@ def load_wine(train_percentage, normalize=False, shuffled=False):
 
     if normalize:
         X = X / X.max(axis=0)
+
+    idx = int(len(X) * train_percentage)
+    return (X[:idx], y[:idx]), (X[idx:], y[idx:])
+
+def load_ionosphere(train_percentage, normalize=False, shuffled=False):
+    X = []
+    Y = []
+    f = open('./ionosphere.data', 'r')
+
+    while True:
+        line = f.readline()
+        if line == '':
+            break
+
+        x = list(map(float, line.split(',')))
+        y = to_categorical(int(x.pop()), 2)
+
+        X.append(np.array(x))
+        Y.append(y)
+    f.close()
+
+    X, y = np.array(X), np.array(Y)
+
+    if shuffled:
+        X, y = unison_shuffled_copies(X,y)
+
+    #if normalize:
+    #    X = X / X.max(axis=0)
 
     idx = int(len(X) * train_percentage)
     return (X[:idx], y[:idx]), (X[idx:], y[idx:])

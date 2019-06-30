@@ -105,7 +105,7 @@ class Model:
         self.has_validation_data = False
         if validation_data != None and len(validation_data) != 2 and self.__are_x_y_valid(validation_data[0], validation_data[1]):
             raise Exception('Validation data not valid')
-        else:
+        elif validation_data != None:
             self.has_validation_data = True
 
         if shuffle:
@@ -114,26 +114,25 @@ class Model:
         self.weights_matrix = self.__init_weights_matrix()
         self.errors = np.zeros(epochs)
         self.validation_error = np.zeros(epochs)
-
         for epoch in range(epochs):
-            total_J = 0
             for batch in range(len(x_training)//batch_size):
                 J, grads = self.__cost_and_grad(x_training[batch*batch_size:(batch+1)*batch_size], y_training[batch*batch_size:(batch+1)*batch_size], reg_factor)
                 for idx in range(len(self.weights_matrix)):
                     self.weights_matrix[idx] = self.weights_matrix[idx] - learning_rate * grads[idx]
-            total_J += J
             self.errors[epoch] = J
             if verbose:
                 if epoch in [0,1,2,3,4,5, epochs-2, epochs-1, epochs] or epoch % 100 == 0:
-                    y_predicted_train = np.array([np.argmax(k) for k in self.predict(x_training)])
-                    y_predicted_validation = np.array([np.argmax(k) for k in self.predict(validation_data[0])])
-                    y_training_maxed = np.array([np.argmax(k) for k in y_training])
-                    y_validation_maxed = np.array([np.argmax(k) for k in validation_data[1]])
-                    scored_train = int(100*( np.count_nonzero(y_predicted_train == y_training_maxed) )/float(len(y_training_maxed)))
-                    scored_test = int(100*( np.count_nonzero(y_predicted_validation == y_validation_maxed) )/float(len(y_predicted_validation)))
 
-                    print("Correct guesses in training set %d%% (epoch %d/%d)"%(scored_train , epoch, epochs ))
-                    print("Correct guesses in test set %d%% (epoch %d/%d)"%(scored_test, epoch, epochs ))
+                    y_predicted_train = np.array([np.argmax(k) for k in self.predict(x_training)])
+                    y_training_maxed = np.array([np.argmax(k) for k in y_training])
+                    scored_train = int(100*( np.count_nonzero(y_predicted_train == y_training_maxed) )/float(len(y_training_maxed)))
+                    print("Correct guesses in training set %d%% (epoch %d/%d) err: %f"%(scored_train , epoch, epochs, self.errors[epoch] ))
+                    
+                    if self.has_validation_data:
+                        y_predicted_validation = np.array([np.argmax(k) for k in self.predict(validation_data[0])])
+                        y_validation_maxed = np.array([np.argmax(k) for k in validation_data[1]])
+                        scored_test = int(100*( np.count_nonzero(y_predicted_validation == y_validation_maxed) )/float(len(y_predicted_validation)))
+                        print("Correct guesses in test set %d%% (epoch %d/%d)"%(scored_test, epoch, epochs ))
 
             if self.has_validation_data:
                 J_validation, _ = self.__cost_and_grad(validation_data[0], validation_data[1], reg_factor)
@@ -151,7 +150,6 @@ class Model:
             activation_value = self.__add_bias(self.layers[layer_idx].activate(z), size)
             activation_values.append(activation_value)
 
-        #print(activation_values[-1])
         return self.layers[-1].activate(np.matmul(activation_values[-1], self.weights_matrix[-1].T))
 
     def set_initial_weights(self, weights):
@@ -183,7 +181,8 @@ class Model:
         if not self.is_trained:
             raise Exception('First train your model (fit) before plotting')
         plt.plot(self.errors)
-        plt.plot(self.validation_error)
+        if self.has_validation_data:
+            plt.plot(self.validation_error)
         plt.legend(['train error', 'test error'])
         plt.show()
 
@@ -203,9 +202,10 @@ class Model:
             activation_values.append(activation_value)
             regularization += np.sum(np.power(self.weights_matrix[layer_idx][:, 1:], 2))
 
-        
         H = self.layers[-1].activate(np.matmul(activation_values[-1], self.weights_matrix[-1].T))
         J = np.sum(np.multiply(-y_training, np.log(H)) - np.multiply((1-y_training), np.log(1-H)))/self.m
+        
+        # THIS IS WRONG: TODO: FIXME
         J += (reg_factor/(2*self.m)) * regularization
 
         ## Back prop
