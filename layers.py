@@ -97,47 +97,23 @@ class Model:
         pass
 
     def fit(self, x_training, y_training, reg_factor, learning_rate, epochs, batch_size, shuffle, validation_data, verbose):
-        if not self.__are_x_y_valid(x_training, y_training):
-            raise Exception('Invalid vectors for training')
-        if len(x_training)//batch_size < 1:
-            raise Exception('Batch size too large')
 
-        self.has_validation_data = False
-        if validation_data != None and len(validation_data) != 2 and self.__are_x_y_valid(validation_data[0], validation_data[1]):
-            raise Exception('Validation data not valid')
-        elif validation_data != None:
-            self.has_validation_data = True
-
-        if shuffle:
-            x_training, y_training = unison_shuffled_copies(x_training, y_training)
+        (x_training, y_training) = self.__pre_process(x_training, y_training, validation_data, shuffle, batch_size)
 
         self.weights_matrix = self.__init_weights_matrix()
         self.errors = np.zeros(epochs)
         self.validation_error = np.zeros(epochs)
         for epoch in range(epochs):
-            for batch in range(len(x_training)//batch_size):
-                J, grads = self.__cost_and_grad(x_training[batch*batch_size:(batch+1)*batch_size], y_training[batch*batch_size:(batch+1)*batch_size], reg_factor)
-                for idx in range(len(self.weights_matrix)):
+            for batch in range(len(x_training)//batch_size): #mini-batching
+                J, grads = self.__cost_and_grad(x_training[batch*batch_size:(batch+1)*batch_size], y_training[batch*batch_size:(batch+1)*batch_size], reg_factor) #vectorized
+                for idx in range(len(self.weights_matrix)): #update all thetas
                     self.weights_matrix[idx] = self.weights_matrix[idx] - learning_rate * grads[idx]
-            self.errors[epoch] = J
-            if verbose:
-                if epoch in [0,1,2,3,4,5, epochs-2, epochs-1, epochs] or epoch % 100 == 0:
-
-                    y_predicted_train = np.array([np.argmax(k) for k in self.predict(x_training)])
-                    y_training_maxed = np.array([np.argmax(k) for k in y_training])
-                    scored_train = int(100*( np.count_nonzero(y_predicted_train == y_training_maxed) )/float(len(y_training_maxed)))
-                    print("Correct guesses in training set %d%% (epoch %d/%d) err: %f"%(scored_train , epoch, epochs, self.errors[epoch] ))
-                    
-                    if self.has_validation_data:
-                        y_predicted_validation = np.array([np.argmax(k) for k in self.predict(validation_data[0])])
-                        y_validation_maxed = np.array([np.argmax(k) for k in validation_data[1]])
-                        scored_test = int(100*( np.count_nonzero(y_predicted_validation == y_validation_maxed) )/float(len(y_predicted_validation)))
-                        print("Correct guesses in test set %d%% (epoch %d/%d)"%(scored_test, epoch, epochs ))
-
-            if self.has_validation_data:
+            
+            self.errors[epoch] = J # for plotting
+            self.__print_all(verbose, epoch, epochs, x_training, y_training, validation_data) # for debugging
+            if self.has_validation_data: # for plotting
                 J_validation, _ = self.__cost_and_grad(validation_data[0], validation_data[1], reg_factor)
                 self.validation_error[epoch] = J_validation
-
         self.is_trained = True
 
 
@@ -186,6 +162,36 @@ class Model:
         plt.legend(['train error', 'test error'])
         plt.show()
 
+    def __pre_process(self, x_training, y_training, validation_data, shuffle, batch_size):
+        if not self.__are_x_y_valid(x_training, y_training):
+            raise Exception('Invalid vectors for training')
+        if len(x_training)//batch_size < 1:
+            raise Exception('Batch size too large')
+
+        self.has_validation_data = False
+        if validation_data != None and len(validation_data) != 2 and self.__are_x_y_valid(validation_data[0], validation_data[1]):
+            raise Exception('Validation data not valid')
+        elif validation_data != None:
+            self.has_validation_data = True
+
+        if shuffle:
+            x_training, y_training = unison_shuffled_copies(x_training, y_training)
+
+        return (x_training, y_training)
+
+    def __print_all(self, verbose, epoch, epochs, x_training, y_training, validation_data):
+        if verbose:
+            if epoch in [0,1,2,3,4,5, epochs-2, epochs-1, epochs] or epoch % 100 == 0:
+                y_predicted_train = np.array([np.argmax(k) for k in self.predict(x_training)])
+                y_training_maxed = np.array([np.argmax(k) for k in y_training])
+                scored_train = int(100*( np.count_nonzero(y_predicted_train == y_training_maxed) )/float(len(y_training_maxed)))
+                print("Correct guesses in training set %d%% (epoch %d/%d) err: %f"%(scored_train , epoch, epochs, self.errors[epoch] ))
+                
+                if self.has_validation_data:
+                    y_predicted_validation = np.array([np.argmax(k) for k in self.predict(validation_data[0])])
+                    y_validation_maxed = np.array([np.argmax(k) for k in validation_data[1]])
+                    scored_test = int(100*( np.count_nonzero(y_predicted_validation == y_validation_maxed) )/float(len(y_predicted_validation)))
+                    print("Correct guesses in test set %d%% (epoch %d/%d)"%(scored_test, epoch, epochs ))
 
     def __cost_and_grad(self, x_training, y_training, reg_factor):
         self.m = x_training.shape[0]
